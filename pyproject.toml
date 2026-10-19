@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "papaki-dre"
+version = "0.1.0"
+description = "Importação das bases do Esferas para o Modelo DRE da Papaki"
+requires-python = ">=3.11"
+dependencies = [
+  "openpyxl>=3.1",
+  "lxml>=5",
+  "pywin32>=306; sys_platform == 'win32'",
+  "supabase>=2.0",
+  "python-dotenv>=1.0",
+  "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+papaki_dre = ["headers.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+  "excel: exige Microsoft Excel instalado (COM)",
+  "real: usa os brutos reais de amostras/2026-09 (ignorado se ausentes)",
+  "live: acessa o Supabase real com dados sintéticos (só com PAPAKI_LIVE=1)",
+]

@@ -1,0 +1,17 @@
+# dados reais da Papaki: nunca versionar (CPF/CNPJ, dados bancários)
+amostras/
+out/
+*.xls
+*.xlsx
+*.csv
+.env
+.env.tmp
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.venv/
+.mcp.json
+.claude/
+
+# conversa interna de passagem entre chats (fica só na pasta local; o repositório é público)
+docs/superpowers/HANDOFF*.md

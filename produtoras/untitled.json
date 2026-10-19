@@ -1,0 +1,22 @@
+{
+  "id": "untitled",
+  "nome": "Untitled",
+  "localidade": "UTLD PRODUÇÃO DE FILMES LTDA",
+  "esferas": {
+    "consolidado": "papaki.esferas.com.br",
+    "produtora": "untitled.esferas.com.br"
+  },
+  "regras": {
+    "nucleo_rra": "Projetos - Untitled",
+    "modelo_comissoes": "Untitled - Publicidade Padrão",
+    "comissoes_excluir_h": [
+      "Seguro Produção",
+      "Taxa da produtora",
+      "Comissão total 1",
+      "Comissão total 2",
+      "Impostos",
+      "Taxa ADM"
+    ]
+  },
+  "linha_mestre": {"cp": {"AP": 881}}
+}
