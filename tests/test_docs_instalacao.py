@@ -111,7 +111,8 @@ def test_documento_mestre_da_implantacao():
                    "Compartilhada", "segue e avisa", "plano próprio", "NOVA-PRODUTORA.md", "INSTALAR.md",
                    "runbooks/tarefa-agendada.md", "6 horas", "Aceite", "Quando parar e perguntar"):
         assert trecho in t, trecho
-    assert "não vale mais" in t                       # a regra antiga "uma máquina por produtora"
+    assert "SQL Editor" in t and "OK reservas" in t
+    assert "não vale mais" in t                      # a regra antiga "uma máquina por produtora"
 
 
 def test_documentos_da_reserva():

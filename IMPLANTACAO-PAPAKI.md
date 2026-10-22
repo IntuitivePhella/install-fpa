@@ -52,7 +52,13 @@ Siga nesta ordem. Em cada fase, termine dizendo ao usuário, em 2 ou 3 linhas, o
 2. **Banco central (uma vez só, por quem administra o Supabase da Papaki):** criar o projeto dedicado e aplicar **as duas
    migrações, nesta ordem**: `supabase/migrations/0001_schema.sql` e depois `supabase/migrations/0002_reservas.sql` (painel,
    SQL Editor, ou CLI). Quem instala as máquinas só recebe a URL e a chave de serviço, que o **usuário cola** no `.env`
-   (o Claude nunca as vê). Criar projeto e aplicar migração só com o "sim" do usuário.
+   (o Claude nunca as vê). Criar projeto e aplicar migração só com o "sim" do usuário. **Se esta máquina não tem acesso
+   ao Supabase** (conector ou CLI), o Claude não aplica nada: indica os dois arquivos, na ordem, e o administrador abre o
+   **SQL Editor** do painel do projeto, cola o conteúdo de cada um e executa. Em qualquer caso, confirme depois com
+   `verificar` (deve mostrar `OK banco` e `OK reservas`) e rode
+   `.venv/Scripts/python.exe -m papaki_dre reserva obter --produtora untitled --competencia AAAA-MM` para provar que o
+   programa fala com as funções novas (deve responder `obtida`; é uma gravação de reserva no banco real, então só com o
+   "sim" do usuário).
 3. **Máquina principal** (`INSTALAR.md`, Passos 3 a 8): entrevista, `configurar` (inclui `--maquina principal`), `verificar`
    (deve mostrar `OK reservas`), ensaio **sem banco** da Untitled com o usuário olhando, e só então a gravação no banco com o
    "pode importar".
