@@ -25,7 +25,7 @@ def resolver(env):
 
 
 CHAVES_GRAVAVEIS = ("PAPAKI_DADOS_DIR", "PAPAKI_PASTA_EXTRACOES", "PAPAKI_PASTA_APURACOES",
-                    "PAPAKI_USUARIO_ESFERAS")
+                    "PAPAKI_USUARIO_ESFERAS", "PAPAKI_MAQUINA")
 _MODELO = re.compile(r"[A-Z][A-Z0-9_]{1,30}")
 CABECALHO_NOVO = (
     "# Cole abaixo, VOCÊ MESMO, os dados do projeto Supabase da Papaki (o Claude não deve abrir este arquivo).",

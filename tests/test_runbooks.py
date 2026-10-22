@@ -26,9 +26,11 @@ def test_roteiros_existem_e_so_citam_comandos_que_existem():
         assert texto.strip()
         for cmd, sub in _comandos(texto):
             assert cmd in {"agenda", "extracao", "importar", "produtora", "instalacao",
-                           "verificar"}, (roteiro.name, cmd)
+                           "verificar", "reserva"}, (roteiro.name, cmd)
             if cmd == "extracao":
                 assert sub in acoes, (roteiro.name, sub)
+            if cmd == "reserva":
+                assert sub == "obter", (roteiro.name, sub)
 
 
 def test_opcoes_citadas_do_importar_existem():

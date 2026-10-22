@@ -37,6 +37,7 @@ ESPERA_ACORDAR = PRAZO_RESTAURACAO - 60   # s: espera máxima dentro de AdminSup
 INTERVALO_ACORDAR = 15                    # s entre as consultas de estado da API
 TENTATIVAS_APOS_ACORDAR = 10
 INTERVALO_APOS_ACORDAR = 6                # segundos entre as tentativas de falar com o banco
+HORAS_RESERVA = 6                         # validade da reserva da rodada (renovada pela mesma máquina)
 
 
 class UsageError(ValueError):
@@ -496,6 +497,38 @@ def _consulta_agenda(produtora: str, competencia: str, periodo_fim: str, restaur
         return "indisponivel", False
 
 
+def _nome_da_maquina(env=None) -> str | None:
+    """`PAPAKI_MAQUINA` do `.env`/ambiente, ou None se não foi configurada."""
+    return (ambiente.resolver(env).get("PAPAKI_MAQUINA") or "").strip() or None
+
+
+def _reservar_rodada(produtora: str, competencia: str, *, env=None, client=None) -> dict:
+    """Para o `agenda --reservar` e o `reserva obter`: tenta reservar a rodada para esta máquina. Nunca levanta e
+    nenhum texto de exceção sai daqui. estado = obtida | de_outra_maquina | sem_nome_da_maquina | nao_consultada
+    (sem banco, a defesa é só o escalonamento dos horários)."""
+    maquina = _nome_da_maquina(env)
+    if not maquina:
+        return {"estado": "sem_nome_da_maquina"}
+    try:
+        repo = Repository(client if client is not None else make_client(env))
+        r = repo.reservar_rodada(produtora, competencia, maquina, HORAS_RESERVA)
+    except Exception:  # noqa: BLE001 - BancoIndisponivel, rede, migração 0002 ainda não aplicada...
+        return {"estado": "nao_consultada"}
+    return {"estado": "obtida" if r.get("reservada") else "de_outra_maquina",
+            "maquina": r.get("maquina"), "expira_em": r.get("expira_em")}
+
+
+def _liberar_reserva(repo, produtora: str, competencia: str, maquina: str | None) -> None:
+    """Libera a reserva desta máquina ao fim do `importar` (importada, bloqueada, idêntica ou falha). Nunca
+    derruba a rodada: se não conseguir, a reserva expira sozinha."""
+    if repo is None or not maquina:
+        return
+    try:
+        repo.liberar_rodada(produtora, competencia, maquina)
+    except Exception:  # noqa: BLE001 - o cliente levanta tipos variados
+        pass
+
+
 def importar(a, client=None, admin=None, env=None) -> int:
     # 1. argumentos (UsageError -> código 3, nada gravado)
     restauracao = None
@@ -536,6 +569,7 @@ def importar(a, client=None, admin=None, env=None) -> int:
     hashes = {k: sha256_file(p) for k, p in files.items()}
     if ent["hashes"] is not None and hashes != ent["hashes"]:
         raise UsageError("--extracao: um arquivo da extração mudou durante a conferência; nada foi gravado")
+    maquina = _nome_da_maquina(env)
     repo = None
     anterior = None
     if not a.sem_banco:
@@ -556,6 +590,7 @@ def importar(a, client=None, admin=None, env=None) -> int:
                 _status(f"Arquivos idênticos já importados (importação {same['id']}); esta NÃO é a foto "
                         "vigente (a vigente é outra importação). Nada foi feito e nenhum arquivo foi gerado "
                         "nesta pasta; use --forcar para voltar a ela.")
+            _liberar_reserva(repo, a.produtora, competencia, maquina)
             return EXIT_OK
         anterior = repo.vigente(a.produtora, competencia)    # só para avisar quem foi substituída
         try:                                   # limpeza de rodadas esquecidas: nunca derruba a rodada
@@ -578,7 +613,8 @@ def importar(a, client=None, admin=None, env=None) -> int:
             # criada antes de sanitizar: toda rodada (inclusive a bloqueada por contrato) fica registrada
             imp_id = repo.criar_importacao(
                 produtora=a.produtora, competencia=competencia, periodo_inicio=inicio.isoformat(),
-                periodo_fim=fim.isoformat(), data_extracao=extracao, origem=ent["origem"], gatilho=a.gatilho)
+                periodo_fim=fim.isoformat(), data_extracao=extracao, origem=ent["origem"], gatilho=a.gatilho,
+                maquina=maquina)
         meta = {"produtora": a.produtora, "competencia": competencia,
                 "periodo": f"{inicio.isoformat()} a {fim.isoformat()}", "data_extracao": extracao,
                 **({"importacao_id": imp_id} if imp_id else {"banco": False})}
@@ -662,6 +698,8 @@ def importar(a, client=None, admin=None, env=None) -> int:
         if substituido and not publicado and mudou is not False and conf is not None:
             _regravar_falha(out_dir, conf, motivo)
         raise
+    finally:                                   # todo desfecho (ok, bloqueada, falha, Ctrl+C) solta a reserva
+        _liberar_reserva(repo, a.produtora, competencia, maquina)
 
 
 def _tolerar_console() -> None:
@@ -685,7 +723,9 @@ def main(argv=None, client=None, admin=None, env=None) -> int:
         if args.cmd == "agenda":
             consulta = lambda produtora, competencia, fim, restaurar: _consulta_agenda(  # noqa: E731
                 produtora, competencia, fim, restaurar, env=env, client=client, admin=admin)
-        return cli_extracao.executar(args, env, consulta_banco=consulta)
+        reservar = lambda produtora, competencia: _reservar_rodada(  # noqa: E731
+            produtora, competencia, env=env, client=client)
+        return cli_extracao.executar(args, env, consulta_banco=consulta, reservar_banco=reservar)
     except UsageError as e:
         print(f"ERRO DE USO: {e}", file=sys.stderr)
         return EXIT_FAILED

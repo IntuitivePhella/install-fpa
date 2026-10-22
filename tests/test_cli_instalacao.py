@@ -115,3 +115,18 @@ def test_configurar_recusa_caminho_com_separador_de_linha_unicode(capsys, tmp_pa
                                        "--arquivo-env", str(tmp_path / ".env")])
     assert codigo == 3 and "valor inválido" in err and out == ""
     assert not (tmp_path / ".env").exists()
+
+
+def test_configurar_grava_o_nome_da_maquina(capsys, tmp_path):
+    arq_env = tmp_path / ".env"
+    codigo, out, err = _rodar(capsys, ["configurar", "--maquina", "grupo-a", "--arquivo-env", str(arq_env)])
+    assert codigo == 0, err
+    assert json.loads(out)["gravadas"] == ["PAPAKI_MAQUINA"]
+    assert "PAPAKI_MAQUINA=grupo-a" in arq_env.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("nome", ["com espaço", "-comeca-com-traco", "a" * 41, "acentuação"])
+def test_configurar_recusa_nome_de_maquina_invalido(capsys, tmp_path, nome):
+    codigo, out, err = _rodar(capsys, ["configurar", "--maquina", nome, "--arquivo-env", str(tmp_path / ".env")])
+    assert codigo == 3 and "--maquina" in err and out == ""
+    assert not (tmp_path / ".env").exists()

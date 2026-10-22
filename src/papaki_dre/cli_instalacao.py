@@ -4,16 +4,19 @@ lê é JSON em ASCII."""
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import re
 import sys
 from pathlib import Path
 
-from . import ambiente, caminhos, produtoras
+from . import ambiente, calendario, caminhos, produtoras
+from .config import FUSO_BRASILIA
 
 COMANDOS = ("configurar", "verificar", "produtora", "instalacao")
 EXIT_OK, EXIT_FALHA = 0, 3
 _EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+_NOME_MAQUINA = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,39}")
 
 
 def registrar(sub) -> None:
@@ -24,6 +27,8 @@ def registrar(sub) -> None:
     c.add_argument("--modelo", action="append", default=[], metavar="PRODUTORA=CAMINHO",
                    help="Modelo DRE base da produtora (caminho completo do .xlsx); pode repetir")
     c.add_argument("--usuario-esferas", help="e-mail do usuário do Esferas/Gmail desta máquina")
+    c.add_argument("--maquina", help="nome curto desta máquina (ex.: principal, grupo-a); vai para as reservas e "
+                                     "para a importação")
     c.add_argument("--criar-pastas", action="store_true", help="cria a pasta de dados e as duas subpastas")
     c.add_argument("--arquivo-env", type=Path, help=argparse.SUPPRESS)
 
@@ -35,6 +40,8 @@ def registrar(sub) -> None:
     ps.add_parser("listar", help="ids das produtoras cadastradas")
     m = ps.add_parser("mostrar", help="configuração de uma produtora")
     m.add_argument("--produtora", required=True)
+    s = ps.add_parser("situacao", help="para cada produtora: competência importada, máquina e reserva (banco central)")
+    s.add_argument("--competencia", help="AAAA-MM; padrão = a competência que a rotina está tratando agora")
 
     i = sub.add_parser("instalacao", help="o que o Claude precisa saber da instalação local")
     isub = i.add_subparsers(dest="acao", required=True)
@@ -52,7 +59,7 @@ def executar(a, env=None, client=None) -> int:
         if a.cmd == "verificar":
             return _verificar(a, env, client)
         if a.cmd == "produtora":
-            return _produtora(a)
+            return _produtora(a, env, client)
         return _instalacao(env)
     except ValueError as e:                   # inclui CaminhosErro e ProdutoraErro
         print(f"ERRO: {e}", file=sys.stderr)
@@ -88,6 +95,11 @@ def _configurar(a) -> int:
         if not _EMAIL.fullmatch(a.usuario_esferas.strip()):
             raise ValueError("--usuario-esferas: informe um e-mail")
         pares["PAPAKI_USUARIO_ESFERAS"] = a.usuario_esferas.strip()
+    if a.maquina:
+        if not _NOME_MAQUINA.fullmatch(a.maquina.strip()):
+            raise ValueError("--maquina: use até 40 letras sem acento, números, '_' ou '-', começando por letra "
+                             "ou número")
+        pares["PAPAKI_MAQUINA"] = a.maquina.strip()
     if not pares and not a.criar_pastas:
         raise ValueError("nada a configurar: informe ao menos uma opção")
     arquivo = a.arquivo_env or ambiente.arquivo_env()
@@ -104,10 +116,21 @@ def _configurar(a) -> int:
     return EXIT_OK
 
 
-def _produtora(a) -> int:
+def _situacao(a, env, client) -> int:
+    from .db import Repository, make_client
+    competencia = (calendario.periodo_da_competencia(a.competencia)[0] if a.competencia
+                   else calendario.competencia_alvo(dt.datetime.now(FUSO_BRASILIA).date()))
+    repo = Repository(client if client is not None else make_client(env))
+    _json({"competencia": competencia, "produtoras": repo.situacao(produtoras.ids(), competencia)})
+    return EXIT_OK
+
+
+def _produtora(a, env=None, client=None) -> int:
     if a.acao == "listar":
         _json({"produtoras": produtoras.ids()})
         return EXIT_OK
+    if a.acao == "situacao":
+        return _situacao(a, env, client)
     p = produtoras.carregar(a.produtora)
     _json({"id": p.id, "nome": p.nome, "localidade": p.localidade,
            "esferas": {"consolidado": p.esferas_consolidado, "produtora": p.esferas_produtora},

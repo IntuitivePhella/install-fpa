@@ -2,13 +2,15 @@
 
 Este repositório pega as quatro bases do Esferas de uma produtora (RRA, CP, CR e Real x Orçado Comissões), limpa
 os dados, guarda tudo no banco central da Papaki (Supabase) e gera uma **cópia** do Modelo DRE preenchida só nas
-abas de base. Hoje só a produtora **Untitled** está cadastrada.
+abas de base. Hoje só a produtora **Untitled** está cadastrada, mas o sistema foi desenhado para as **18 produtoras** da
+Papaki, rodando em uma máquina principal e, se houver, máquinas de grupo (veja `IMPLANTACAO-PAPAKI.md`).
 
 Quem usa é do FP&A e não é desenvolvedor: **fale em português simples**, sem jargão. Ao fim de cada etapa diga em
 2 ou 3 linhas o que passou, o que não passou e o que mudou para a pessoa. Pergunte só o que for decisão dela.
 
 ## Por onde começar
 
+- **Implantação na Papaki (leia primeiro): `IMPLANTACAO-PAPAKI.md`**: desenho completo, decisões e a ordem de condução.
 - Instalar nesta máquina: `INSTALAR.md`.
 - Cadastrar outra produtora: `NOVA-PRODUTORA.md`.
 - Rodar o mês (agendado ou manual): `runbooks/rotina-mensal.md` e `runbooks/extracao-esferas.md`.

@@ -1,6 +1,7 @@
 # Roteiro de instalação (o Claude executa, com o usuário ao lado)
 
-Leia `CLAUDE.md` antes: as regras de lá valem em todos os passos. Pasta do projeto: a pasta onde está este arquivo.
+Leia `CLAUDE.md` e `IMPLANTACAO-PAPAKI.md` antes (o segundo traz o desenho para as 18 produtoras e várias máquinas): as
+regras de lá valem em todos os passos. Pasta do projeto: a pasta onde está este arquivo.
 Fale em português simples, **um passo de cada vez**, e confirme o resultado antes de seguir.
 Os comandos com barras normais (`.venv/Scripts/python.exe`) valem no PowerShell e no Git Bash, não no cmd puro.
 
@@ -44,8 +45,10 @@ O último comando ainda vai acusar `FALHA` de configuração (pasta de dados, mo
 1. **Onde guardar modelos, extrações e resultados?** "A Papaki já tem uma pasta (no computador, no OneDrive ou em rede)
    onde vocês guardam o Modelo DRE e os relatórios do Esferas? Se sim, qual? Se não, eu crio uma nova; sugiro
    `C:\Users\<usuário>\papaki_dados`." Regras: tem de ficar **fora da pasta do projeto**, com espaço livre (as extrações
-   somam dezenas de MB por mês) e, de preferência, fora de pasta sincronizada em tempo real (o OneDrive pode travar
-   arquivo aberto). O sistema cria, dentro dela, uma subpasta de extrações (padrão `extracoes`) e outra de apurações
+   somam dezenas de MB por mês) e, como as máquinas da Papaki **compartilham** esta pasta, em um lugar com sincronização
+   confiável (disco de rede ou serviço de sincronização): cada máquina aponta o próprio caminho para a **mesma** pasta, e
+   ninguém abre as cópias do Excel enquanto a rotina roda. Quem decide se a rotina roda é o banco central, nunca só a
+   pasta. O sistema cria, dentro dela, uma subpasta de extrações (padrão `extracoes`) e outra de apurações
    (padrão `apuracoes`). Se a Papaki já usa outros nomes de pasta, use os nomes dela (`--pasta-extracoes` e
    `--pasta-apuracoes`).
 2. **Modelo DRE base da Untitled:** "Qual é o arquivo do Modelo DRE base do ano (o vazio, sem os dados do mês)? Quem o
@@ -53,16 +56,19 @@ O último comando ainda vai acusar `FALHA` de configuração (pasta de dados, mo
    trabalha numa cópia.
 3. **Usuário do Esferas:** "Qual é o e-mail do usuário do Esferas e do Gmail desta máquina (é no Gmail dele que chega o
    relatório RRA)?"
-4. **Rotina mensal automática:** "Esta máquina será a **responsável** por rodar a rotina automática da Untitled todo
-   mês? Só **uma** máquina por produtora deve agendar." (Se for outra, pule o passo 9: nesta máquina só o disparo manual.)
+4. **Rotina mensal automática:** "Esta máquina será a **principal** (roda todas as produtoras) ou uma máquina de
+   **grupo** (roda só algumas)? Quais produtoras? Pode haver mais de uma máquina para a mesma produtora: a de grupo
+   roda mais cedo e a principal mais tarde. Qual **nome curto** damos a esta máquina (ex.: `principal`, `grupo-a`)?"
+   (Se nada será agendado aqui, pule o passo 9: nesta máquina só o disparo manual.)
 5. **Banco central:** "O administrador do Supabase da Papaki já te passou a URL e a chave de serviço?" Se não, peça a ele.
    Se o banco ainda não existe: pare, explique que alguém da Papaki precisa criar o projeto (você só ajuda, com o OK dele:
-   nome e organização, e a migração `supabase/migrations/0001_schema.sql`).
+   nome e organização, e as migrações `supabase/migrations/0001_schema.sql` e depois `supabase/migrations/0002_reservas.sql`,
+   nessa ordem).
 
 ## Passo 4: gravar as respostas
 
 ```
-.venv/Scripts/python.exe -m papaki_dre configurar --dados-dir "<pasta de dados>" --criar-pastas --modelo untitled="<caminho completo do .xlsx>" --usuario-esferas "<e-mail>"
+.venv/Scripts/python.exe -m papaki_dre configurar --dados-dir "<pasta de dados>" --criar-pastas --modelo untitled="<caminho completo do .xlsx>" --usuario-esferas "<e-mail>" --maquina "<nome curto>"
 ```
 
 Acrescente `--pasta-extracoes "<nome>"` e `--pasta-apuracoes "<nome>"` só se o usuário quis nomes diferentes dos
@@ -124,14 +130,16 @@ Só com o "**pode importar**" explícito do usuário:
 cerca de 9 minutos: use timeout longo ou segundo plano e não cancele.) Repita o mesmo comando uma vez: deve responder "Arquivos idênticos já importados" e não gravar nada.
 Diga ao usuário qual importação ficou como a vigente.
 
-## Passo 9: tarefa agendada (só na máquina responsável e com o OK do usuário)
+## Passo 9: tarefa agendada (só para as produtoras que esta máquina deve rodar e com o OK do usuário)
 
 Crie a tarefa no **Claude desta máquina**, a partir de `runbooks/tarefa-agendada.md`, trocando `<PASTA_DO_PROJETO>`,
 `<PRODUTORA>` e `<EMAIL_DO_USUARIO>`. Avise o usuário de que a tarefa só roda com o computador ligado, o aplicativo do
 Claude aberto e o Chrome (com a extensão) aberto às 08:00. Avise também que a tarefa, por desenho, **acorda o banco pausado e grava a importação todo mês SEM pedir novo "sim"**: o
-OK dele ao criar a tarefa vale para isso. **Peça esse OK de forma explícita antes de criar.** Mostre o nome, o horário e como desligar. **Risco conhecido:**
-se **duas máquinas** agendarem a mesma produtora, o `agenda` só evita a repetição depois de uma importação gravada; duas
-máquinas acordando no mesmo dia antes disso poderiam extrair ao mesmo tempo. Por isso, uma máquina por produtora.
+OK dele ao criar a tarefa vale para isso. **Peça esse OK de forma explícita antes de criar.** Mostre o nome, o horário e como desligar. **Várias máquinas:**
+a máquina principal roda todas as produtoras e as de grupo rodam algumas; use horários diferentes (grupo mais cedo,
+principal mais tarde), como em `runbooks/tarefa-agendada.md`. A tarefa usa `agenda --reservar`: a máquina que chega
+primeiro reserva a produtora no banco central e a outra termina em silêncio. Só falta essa proteção se o banco ou o nome da
+máquina não estiverem configurados (o `verificar` avisa). O desenho completo está em `IMPLANTACAO-PAPAKI.md`.
 
 ## Passo 10: fechar
 

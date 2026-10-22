@@ -30,17 +30,23 @@ Códigos de saída dos comandos: 0 ok, 2 bloqueada (só o `importar`), 3 falha o
 
 ## Duas formas de começar
 
-- **Agendada (todo dia útil de manhã):** rode `.venv/Scripts/python.exe -m papaki_dre agenda --produtora untitled --restaurar-banco`.
+- **Agendada (todo dia útil de manhã):** rode `.venv/Scripts/python.exe -m papaki_dre agenda --produtora untitled --restaurar-banco --reservar`.
   Leia o JSON. Se `"rodar": false`, **termine em silêncio** (sem aviso). Se `true`, a competência é `"competencia"`.
   O campo `"banco"` diz como o `agenda` decidiu: `consultado` (consultou o banco central: nenhuma máquina tinha importado
   a competência), `nao_configurado` ou `indisponivel` (decidiu só pela pasta local: siga, mas **avise o usuário** no
-  resumo final) ou `pulado`. O JSON traz também `"pasta_apuracao"` (onde ficam `RESULTADO.md` e `PARADA.md`) e
+  resumo final) ou `pulado`. O campo `"reserva"` diz se esta máquina conseguiu reservar a rodada: `obtida` (siga),
+  `de_outra_maquina` (o `agenda` já devolve `rodar: false`: termine em silêncio), `sem_nome_da_maquina` ou
+  `nao_consultada` (siga, mas **avise o usuário** no resumo final: só o horário protege contra outra máquina) ou
+  `nao_pedida`. O JSON traz também `"pasta_apuracao"` (onde ficam `RESULTADO.md` e `PARADA.md`) e
   `"pasta_extracoes"`: use esses caminhos, o Claude nunca abre o `.env` nem precisa saber `PAPAKI_DADOS_DIR`.
   **Se o `agenda` sair com código 3** (pasta de dados não configurada, data ruim, falha de arquivo), **avise o usuário**
   com a mensagem de erro: não termine em silêncio. Com `--restaurar-banco`, o `agenda` pode levar até cerca de 9
   minutos se o banco estiver pausado: use timeout longo e não cancele.
 - **Manual (o usuário pediu "rode o mês AAAA-MM"):** pule o `agenda` e use essa competência. Para um mês ainda em
-  andamento, o usuário informa o último dia (`--periodo-fim`).
+  andamento, o usuário informa o último dia (`--periodo-fim`). Antes de extrair, rode
+  `.venv/Scripts/python.exe -m papaki_dre reserva obter --produtora untitled --competencia <AAAA-MM>` e leia `estado`: se
+  for `de_outra_maquina`, **avise o usuário** (o JSON traz `maquina` e `expira_em`) e só continue se ele mandar; nunca use
+  `--nova` por causa disso.
 
 ## Passos
 
@@ -81,7 +87,8 @@ Códigos de saída dos comandos: 0 ok, 2 bloqueada (só o `importar`), 3 falha o
 Se uma trava recusou, o login expirou, um clique não aconteceu ou um relatório não chegou: não exporte nada que a
 trava barrou, **não clique de novo nem redispare**, e escreva o motivo num arquivo **novo** `PARADA.md`
 (com data e hora; se já existir, acrescente ao final) na `pasta_apuracao` (do `agenda` ou do `extracao iniciar`; crie a pasta se preciso): etapa, motivo (sem dados) e "pasta de extração aberta: use `extracao iniciar` com
-`--retomar`". **Nunca escreva em `RESULTADO.md`** (é do `importar`). Avise o usuário descrevendo o que viu; quem decide
+`--retomar`". A reserva da rodada **não** é liberada (expira em 6 h e a mesma máquina a renova ao retomar), para outra
+máquina não extrair do zero uma produtora cuja extração já foi disparada. **Nunca escreva em `RESULTADO.md`** (é do `importar`). Avise o usuário descrevendo o que viu; quem decide
 é ele. Não importe nada. A tarefa agendada tentará de novo no dia útil seguinte (até o 5º), retomando a extração
 aberta. Pasta de extração duvidosa (estado ilegível, mais de uma aberta): pare e avise; não use `--nova`.
 

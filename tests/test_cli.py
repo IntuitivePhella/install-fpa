@@ -692,3 +692,71 @@ def test_importar_garante_a_linha_da_produtora_no_banco(env):
     client.tables["produtoras"] = []                       # banco novo, sem a linha da produtora
     assert cli.main(_argv(env), client=client) == 0
     assert [r["id"] for r in client.tables["produtoras"]] == ["untitled"]
+
+
+# --- várias máquinas: máquina gravada e reserva liberada ------------------------------------------
+
+def _reservar(client, maquina):
+    from papaki_dre.db import Repository
+    return Repository(client).reservar_rodada("untitled", "2026-09", maquina, 6)
+
+
+def _status_reservas(client):
+    return [r["status"] for r in client.tables.get("reservas_rodada", [])]
+
+
+def test_importar_grava_a_maquina_e_libera_a_reserva(env, monkeypatch):
+    monkeypatch.setenv("PAPAKI_MAQUINA", "principal")
+    client = FakeClient()
+    _reservar(client, "principal")
+    assert cli.main(_argv(env), client=client) == 0
+    assert client.tables["importacoes"][0]["maquina"] == "principal"
+    assert _status_reservas(client) == ["liberada"]
+
+
+def test_importar_sem_nome_da_maquina_nao_manda_a_coluna_e_nao_mexe_na_reserva(env):
+    client = FakeClient()
+    _reservar(client, "grupo-a")
+    assert cli.main(_argv(env), client=client) == 0
+    assert "maquina" not in client.tables["importacoes"][0]
+    assert _status_reservas(client) == ["ativa"]
+
+
+def test_importar_nao_libera_a_reserva_de_outra_maquina(env, monkeypatch):
+    monkeypatch.setenv("PAPAKI_MAQUINA", "principal")
+    client = FakeClient()
+    _reservar(client, "grupo-a")
+    assert cli.main(_argv(env), client=client) == 0
+    assert _status_reservas(client) == ["ativa"]
+
+
+def test_importar_bloqueada_tambem_libera_a_reserva(env, monkeypatch):
+    monkeypatch.setenv("PAPAKI_MAQUINA", "principal")
+
+    def bloqueia(*a, **kw):
+        raise ContractError("cabeçalho diferente")
+
+    monkeypatch.setattr(cli, "sanitize_cp", bloqueia)
+    client = FakeClient()
+    _reservar(client, "principal")
+    assert cli.main(_argv(env), client=client) == 2
+    assert _status_reservas(client) == ["liberada"]
+
+
+def test_importar_identico_tambem_libera_a_reserva(env, monkeypatch):
+    monkeypatch.setenv("PAPAKI_MAQUINA", "principal")
+    client = FakeClient()
+    assert cli.main(_argv(env), client=client) == 0
+    _reservar(client, "principal")
+    assert cli.main(_argv(env), client=client) == 0           # mesmos arquivos: "Arquivos idênticos já importados"
+    assert len(client.tables["importacoes"]) == 1
+    assert _status_reservas(client) == ["liberada"]
+
+
+def test_falha_ao_liberar_nao_derruba_a_importacao(env, monkeypatch):
+    monkeypatch.setenv("PAPAKI_MAQUINA", "principal")
+    client = FakeClient()
+    monkeypatch.setattr("papaki_dre.db.Repository.liberar_rodada",
+                        lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("banco caiu")))
+    assert cli.main(_argv(env), client=client) == 0
+    assert client.tables["importacoes"][0]["status"] == "concluida"

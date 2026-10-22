@@ -48,7 +48,9 @@ Isto é feito **uma vez só, por quem administra o banco da Papaki**; quem insta
 URL e a chave.
 
 1. Crie um projeto Supabase dedicado (não reaproveite o de outro sistema).
-2. Aplique a migração `supabase/migrations/0001_schema.sql` (painel, SQL Editor, ou CLI do Supabase).
+2. Aplique as migrações, **nesta ordem**: `supabase/migrations/0001_schema.sql` e `supabase/migrations/0002_reservas.sql`
+   (painel, SQL Editor, ou CLI do Supabase). A 0002 serve a várias máquinas: guarda as reservas de rodada e o nome da
+   máquina que importou. O desenho para as 18 produtoras está em `IMPLANTACAO-PAPAKI.md`.
 3. A segurança é por RLS (regra de segurança por linha do Supabase) ligado em todas as tabelas e **sem
    nenhuma política**: só a chave de serviço (`service_role`, a chave de administrador do projeto) consegue
    ler e gravar. Por isso o `.env` leva só essa chave e ele **nunca vai
@@ -158,6 +160,12 @@ contam como dia útil). Fora do 2º ao 5º dia útil, ou com a competência já 
 O `agenda` consulta o banco central da Papaki para saber se **alguma máquina** já importou a competência (e, se ela
 já foi importada, não manda rodar). Opções: `--sem-banco` (decide só pela pasta local, sem consultar o banco) e
 `--restaurar-banco` (se o banco estiver pausado, acorda o projeto antes de consultar; pode levar até cerca de 9 minutos).
+Com `--reservar`, se for dia de rodar e o banco responder, ele reserva a produtora e a competência para esta máquina (nome
+em `PAPAKI_MAQUINA`); se outra máquina já reservou, responde "não rodar". A reserva vale 6 horas e o `importar` a libera.
+
+**`reserva obter --produtora <id> --competencia AAAA-MM`** faz a mesma reserva à mão (rodadas manuais) e diz qual máquina a
+tem. **`produtora situacao [--competencia AAAA-MM]`** mostra, para cada produtora cadastrada, se a competência já foi
+importada (até que dia e por qual máquina) e se há reserva ativa.
 
 **`extracao <subcomando>`** (usado pelo Claude, raramente por você):
 
@@ -194,7 +202,7 @@ Nenhum deles mostra valores do `.env` (só nomes e respostas sim/não):
 |---|---|
 | `configurar` | Grava no `.env` as respostas da instalação (pasta de dados, nomes das subpastas, Modelo DRE base, usuário do Esferas). Nunca grava chaves do Supabase: quem cola é o usuário. Com `--criar-pastas`, cria a pasta de dados e as duas subpastas. |
 | `verificar` | Confere o ambiente item a item (OK, AVISO ou FALHA): Python, bibliotecas, `.env`, pastas, modelo, Excel e banco (`--sem-banco` pula o banco). |
-| `produtora listar` \| `produtora mostrar --produtora <id>` | Lista as produtoras cadastradas ou mostra as regras de uma (arquivo `produtoras/<id>.json`). |
+| `produtora listar` \| `produtora mostrar --produtora <id>` \| `produtora situacao` | Lista as produtoras cadastradas, mostra as regras de uma (arquivo `produtoras/<id>.json`) ou mostra a situação de todas no banco central. |
 | `instalacao mostrar` | Mostra o que o Claude precisa saber desta instalação: usuário do Esferas, nomes das subpastas e se há modelo configurado. |
 
 ### Variáveis do `.env` (só os nomes; os valores ficam só no seu `.env`)
@@ -206,6 +214,7 @@ Nenhum deles mostra valores do `.env` (só nomes e respostas sim/não):
 | `SUPABASE_ACCESS_TOKEN` | Chave pessoal do Supabase (Conta, Access Tokens: uma senha de acesso à sua conta, gerada por você). Só serve para acordar o projeto pausado com `--restaurar-banco`. Nunca é impressa nem gravada. |
 | `PAPAKI_PASTA_EXTRACOES` / `PAPAKI_PASTA_APURACOES` | Nomes das subpastas de extrações e de apurações dentro da pasta de dados (opcionais; padrão `extracoes` e `apuracoes`). Escolhidos na instalação. |
 | `PAPAKI_USUARIO_ESFERAS` | E-mail do usuário do Esferas e do Gmail desta máquina. O Claude o usa para escolher o Chrome certo. |
+| `PAPAKI_MAQUINA` | Nome curto desta máquina (ex.: `principal`, `grupo-a`). Vai para as reservas de rodada e para cada importação. Gravado por `configurar --maquina`. |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | O banco central da Papaki. Quem cola é o usuário; nunca vão para o git. |
 
 Sem `PAPAKI_DADOS_DIR`, os comandos que precisam de pasta param com a mensagem "defina PAPAKI_DADOS_DIR".

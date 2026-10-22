@@ -10,6 +10,7 @@ payload passa por `json.dumps(allow_nan=False)`; o Postgres recusa texto com o c
 Uma violação levanta `FakeAPIError` e não altera nada (comando atômico).
 """
 import copy
+import datetime as dt
 import json
 import uuid
 
@@ -176,8 +177,11 @@ class _Rpc:
         self.client, self.name, self.params = client, name, _wire(params)
 
     def execute(self):
-        assert self.name == "promover_importacao"
+        assert self.name in ("promover_importacao", "reservar_rodada", "liberar_rodada"), self.name
         self.client.calls.append(("rpc", self.name, None))
+        return getattr(self, "_" + self.name)()
+
+    def _promover_importacao(self):
         rows = self.client.tables.get("importacoes", [])
         target = next((r for r in rows if r["id"] == self.params["p_id"]), None)
         if target is None or target["status"] != "em_andamento":
@@ -195,6 +199,39 @@ class _Rpc:
         self.client.tables["importacoes"] = candidate
         return _Resp(None)
 
+    def _reservar_rodada(self):
+        """Espelha supabase/migrations/0002_reservas.sql: expira as vencidas, renova a da mesma máquina, nega a
+        de outra e senão cria. O tempo é o de `client.agora()` (o `now()` do banco)."""
+        p = self.params
+        agora = self.client.agora()
+        expira = (agora + dt.timedelta(hours=p["p_horas"])).isoformat()
+        reservas = self.client.tables.setdefault("reservas_rodada", [])
+        da_rodada = [r for r in reservas if r["produtora_id"] == p["p_produtora"]
+                     and r["competencia"] == p["p_competencia"] and r["status"] == "ativa"]
+        for r in da_rodada:
+            if dt.datetime.fromisoformat(r["expira_em"]) <= agora:
+                r["status"] = "expirada"
+        atual = next((r for r in da_rodada if r["status"] == "ativa"), None)
+        if atual is not None and atual["maquina"] == p["p_maquina"]:
+            atual["expira_em"] = expira
+            return _Resp({"reservada": True, "maquina": p["p_maquina"], "expira_em": expira})
+        if atual is not None:
+            return _Resp({"reservada": False, "maquina": atual["maquina"], "expira_em": atual["expira_em"]})
+        reservas.append({"id": str(uuid.uuid4()), "produtora_id": p["p_produtora"],
+                         "competencia": p["p_competencia"], "maquina": p["p_maquina"],
+                         "criada_em": agora.isoformat(), "expira_em": expira, "status": "ativa"})
+        return _Resp({"reservada": True, "maquina": p["p_maquina"], "expira_em": expira})
+
+    def _liberar_rodada(self):
+        p = self.params
+        achou = False
+        for r in self.client.tables.get("reservas_rodada", []):
+            if (r["produtora_id"], r["competencia"], r["maquina"], r["status"]) == (
+                    p["p_produtora"], p["p_competencia"], p["p_maquina"], "ativa"):
+                r["status"] = "liberada"
+                achou = True
+        return _Resp(achou)
+
 
 class FakeClient:
     def __init__(self, fail_with: Exception | None = None, max_rows: int = MAX_ROWS):
@@ -205,6 +242,7 @@ class FakeClient:
         self.calls: list[tuple] = []        # (tabela, operação, nº de linhas inseridas) — round-trips
         self.seq = 0
         self.returning: dict[str, list] = {}  # tabela -> `returning` de cada insert
+        self.agora = lambda: dt.datetime.now(dt.timezone.utc)   # o "now()" do banco; os testes o trocam
 
     def table(self, name):
         if self.fail_with is not None:

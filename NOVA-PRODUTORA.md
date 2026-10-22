@@ -1,6 +1,6 @@
 # Roteiro: cadastrar uma nova produtora (o Claude entrevista o usuário da Papaki)
 
-Leia `CLAUDE.md` antes. **Não adivinhe nada**: toda regra de extração, limpeza, pasta e modelo vem do usuário da Papaki
+Leia `CLAUDE.md` e `IMPLANTACAO-PAPAKI.md` antes. **Não adivinhe nada**: toda regra de extração, limpeza, pasta e modelo vem do usuário da Papaki
 (registre as respostas). O que já existe hoje (Untitled) mostra o formato: `.venv/Scripts/python.exe -m papaki_dre
 produtora mostrar --produtora untitled`. Faça **uma pergunta por vez**, em português simples.
 
@@ -76,7 +76,9 @@ usuário se podem ficar públicos. Nunca coloque dados de relatórios, e-mails n
    com `--produtora <id>`. Compare com a DRE que o FP&A já fez à mão do mês anterior **sabendo que ela não é verdade
    linha a linha** (a regra é a que o usuário ditou na entrevista).
 2. Gravar no banco: só com o "pode importar" (Passo 8).
-3. Tarefa agendada **própria** da produtora (Passo 9, `runbooks/tarefa-agendada.md`), só com o OK do usuário e se esta for a
-   máquina responsável por ela.
+3. Pergunte **em quais máquinas** a produtora vai rodar (a principal roda todas; pode haver máquinas de grupo) e crie a
+   tarefa agendada **própria** da produtora em cada uma (Passo 9, `runbooks/tarefa-agendada.md`, com horários escalonados),
+   só com o OK do usuário. Quem usa cada máquina repete o `configurar --modelo` dela. Depois do primeiro mês, rode
+   `.venv/Scripts/python.exe -m papaki_dre produtora situacao` para conferir a produtora entre as demais.
 4. Registre as regras novas em `instrucoes_relatorios_ base.md` (seção da produtora), rode a auditoria
    (`.venv/Scripts/python.exe scripts/auditar_publicacao.py`) e os testes, e faça o commit do arquivo da produtora.

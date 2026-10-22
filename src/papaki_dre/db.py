@@ -147,6 +147,17 @@ class BancoIndisponivel(RuntimeError):
     """O Supabase não respondeu (projeto pausado no plano gratuito, rede, URL errada)."""
 
 
+def _no_futuro(texto, agora: dt.datetime) -> bool:
+    """`texto` (ISO do PostgREST; sem fuso vale UTC) é depois de `agora`? Ilegível ou ausente = não."""
+    try:
+        instante = dt.datetime.fromisoformat(str(texto))
+    except ValueError:
+        return False
+    if instante.tzinfo is None:
+        instante = instante.replace(tzinfo=dt.timezone.utc)
+    return instante > agora
+
+
 class Repository:
     def __init__(self, client):
         self.client = client
@@ -169,11 +180,14 @@ class Repository:
             self.client.table(table).insert(rows[i:i + BATCH], returning=ReturnMethod.minimal).execute()
 
     def criar_importacao(self, *, produtora, competencia, periodo_inicio, periodo_fim,
-                         data_extracao, origem, gatilho) -> str:
-        res = self.client.table("importacoes").insert({
+                         data_extracao, origem, gatilho, maquina=None) -> str:
+        linha = {
             "produtora_id": produtora, "competencia": competencia, "periodo_inicio": periodo_inicio,
             "periodo_fim": periodo_fim, "data_extracao": data_extracao, "origem": origem,
-            "gatilho": gatilho}).execute()
+            "gatilho": gatilho}
+        if maquina:                       # coluna da migração 0002: sem nome da máquina, nada a gravar
+            linha["maquina"] = maquina
+        res = self.client.table("importacoes").insert(linha).execute()
         return res.data[0]["id"]
 
     def registrar_arquivo(self, importacao_id, relatorio, *, nome, sha256, tamanho,
@@ -317,6 +331,40 @@ class Repository:
                     r["id"], "falhou", motivo=f"rodada interrompida (sem desfecho há mais de {horas} h)"):
                 encerradas += 1
         return encerradas
+
+    def reservar_rodada(self, produtora, competencia, maquina, horas) -> dict:
+        """Reserva a rodada (extração + importação) para `maquina` por `horas` horas (função SQL atômica; o
+        tempo é o do banco). A mesma máquina renova. Devolve {"reservada": bool, "maquina": quem a tem,
+        "expira_em": ISO}."""
+        res = self.client.rpc("reservar_rodada", {"p_produtora": produtora, "p_competencia": competencia,
+                                                  "p_maquina": maquina, "p_horas": horas}).execute()
+        return res.data
+
+    def liberar_rodada(self, produtora, competencia, maquina) -> bool:
+        """Libera a reserva ativa da própria `maquina`. True se havia uma reserva dela para liberar."""
+        res = self.client.rpc("liberar_rodada", {"p_produtora": produtora, "p_competencia": competencia,
+                                                 "p_maquina": maquina}).execute()
+        return bool(res.data)
+
+    def situacao(self, produtoras_ids, competencia, agora=None) -> list[dict]:
+        """Uma linha por produtora, só leitura: se a competência tem foto vigente (e até que dia, e qual máquina a
+        importou) e se há reserva ativa e não vencida (de qual máquina, até quando). Exige a migração 0002."""
+        agora = agora or dt.datetime.now(dt.timezone.utc)
+        vigentes = {r["produtora_id"]: r for r in self.client.table("importacoes")
+                    .select("produtora_id,periodo_fim,maquina").eq("competencia", competencia)
+                    .eq("vigente", True).execute().data}
+        reservas = {r["produtora_id"]: r for r in self.client.table("reservas_rodada")
+                    .select("produtora_id,maquina,expira_em").eq("competencia", competencia)
+                    .eq("status", "ativa").execute().data if _no_futuro(r.get("expira_em"), agora)}
+        saida = []
+        for pid in produtoras_ids:
+            v, r = vigentes.get(pid), reservas.get(pid)
+            saida.append({
+                "produtora": pid, "importada": v is not None,
+                "periodo_fim": str(v["periodo_fim"]) if v else None,
+                "maquina": v.get("maquina") if v else None,
+                "reserva": {"maquina": r["maquina"], "expira_em": str(r["expira_em"])} if r else None})
+        return saida
 
     def salvar_conferencia(self, importacao_id, conferencia) -> None:
         self.client.table("importacoes").update({"conferencia": conferencia}).eq("id", importacao_id).execute()

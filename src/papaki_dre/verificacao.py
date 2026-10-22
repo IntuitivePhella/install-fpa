@@ -97,6 +97,9 @@ def _variaveis(env, com_banco: bool, itens: list[Item]) -> None:
     itens.append(Item(OK, "PAPAKI_USUARIO_ESFERAS", "definida") if _tem(env, "PAPAKI_USUARIO_ESFERAS")
                  else Item(AVISO, "PAPAKI_USUARIO_ESFERAS", "não definida: o Claude precisa dela para escolher o "
                                                             "Chrome certo (configurar --usuario-esferas)"))
+    itens.append(Item(OK, "PAPAKI_MAQUINA", "definida") if _tem(env, "PAPAKI_MAQUINA")
+                 else Item(AVISO, "PAPAKI_MAQUINA", "não definida: sem o nome da máquina a rotina agendada não "
+                                                    "reserva a produtora (configurar --maquina)"))
 
 
 def _dados(env, projeto: Path, itens: list[Item]) -> None:
@@ -187,6 +190,23 @@ def _banco(env, client, itens: list[Item]) -> None:
     itens.append(Item(OK, "banco", "responde e as 9 tabelas existem") if not ausentes
                  else Item(FALHA, "banco", "faltam tabelas: " + ", ".join(ausentes)
                            + " (aplique supabase/migrations/0001_schema.sql no projeto)"))
+    if not ausentes:
+        _reservas(cliente, itens)
+
+
+def _reservas(cliente, itens: list[Item]) -> None:
+    """Migração 0002 (várias máquinas): sem ela o sistema funciona, mas sem a proteção da reserva."""
+    try:
+        cliente.table("reservas_rodada").select("*").limit(1).execute()
+    except Exception as e:  # noqa: BLE001 - o erro do PostgREST/rede tem tipos variados
+        if _tabela_inexistente(e):
+            itens.append(Item(AVISO, "reservas", "falta a tabela reservas_rodada (aplique "
+                                                 "supabase/migrations/0002_reservas.sql): sem ela duas máquinas "
+                                                 "podem extrair a mesma produtora ao mesmo tempo"))
+        else:
+            itens.append(Item(AVISO, "reservas", f"erro ao consultar as reservas ({type(e).__name__})"))
+        return
+    itens.append(Item(OK, "reservas", "tabela de reservas existe"))
 
 
 def render(itens: list[Item]) -> str:

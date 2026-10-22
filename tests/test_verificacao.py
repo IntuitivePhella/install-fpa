@@ -27,7 +27,7 @@ def _env(tmp_path, modelo, **mais):
     (dados / "extracoes").mkdir(parents=True, exist_ok=True)
     (dados / "apuracoes").mkdir(parents=True, exist_ok=True)
     e = {"PAPAKI_DADOS_DIR": str(dados), "PAPAKI_MODELO_UNTITLED": str(modelo),
-         "PAPAKI_USUARIO_ESFERAS": "ana@exemplo.com", "SUPABASE_URL": "https://inventado.supabase.co",
+         "PAPAKI_USUARIO_ESFERAS": "ana@exemplo.com", "PAPAKI_MAQUINA": "principal", "SUPABASE_URL": "https://inventado.supabase.co",
          "SUPABASE_SERVICE_KEY": "chave-inventada", "SUPABASE_ACCESS_TOKEN": "token-inventado"}
     e.update(mais)
     return e
@@ -190,3 +190,28 @@ def test_verificar_por_padrao_consulta_o_banco(monkeypatch, capsys, tmp_path, mo
     assert chamadas[0]["com_banco"] is True
     assert cli.main(["verificar", "--sem-banco"], env={}) == 0
     assert chamadas[1]["com_banco"] is False
+
+
+def test_sem_nome_da_maquina_avisa(tmp_path, modelo, projeto):
+    env = _env(tmp_path, modelo)
+    del env["PAPAKI_MAQUINA"]
+    item = _por_nome(_rodar(tmp_path, modelo, projeto, env=env))["PAPAKI_MAQUINA"]
+    assert item.nivel == AVISO and "--maquina" in item.detalhe and "principal" not in item.detalhe
+
+
+def test_tabela_de_reservas_presente_e_ok(tmp_path, modelo, projeto):
+    assert _por_nome(_rodar(tmp_path, modelo, projeto))["reservas"].nivel == OK
+
+
+def test_tabela_de_reservas_ausente_e_so_aviso(tmp_path, modelo, projeto):
+    class SemReservas(FakeClient):
+        def table(self, name):
+            if name == "reservas_rodada":
+                e = Exception("relation does not exist")
+                e.code = "42P01"
+                raise e
+            return super().table(name)
+
+    itens = _por_nome(_rodar(tmp_path, modelo, projeto, client=SemReservas()))
+    assert itens["reservas"].nivel == AVISO and "0002_reservas.sql" in itens["reservas"].detalhe
+    assert itens["banco"].nivel == OK                      # as 9 tabelas da 0001 continuam o que decide o banco

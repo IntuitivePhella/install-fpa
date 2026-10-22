@@ -27,6 +27,15 @@ def registrar(sub) -> None:
     ag.add_argument("--restaurar-banco", action="store_true",
                     help="se o banco estiver pausado, acorda o projeto antes de consultar (exige "
                          "SUPABASE_ACCESS_TOKEN no .env)")
+    ag.add_argument("--reservar", action="store_true",
+                    help="se for dia de rodar, reserva a rodada no banco central para esta máquina (PAPAKI_MAQUINA); "
+                         "se outra máquina já a reservou, responde 'não rodar'")
+
+    rv = sub.add_parser("reserva", help="reserva da rodada de uma produtora e competência (usado pelo Claude)")
+    rvs = rv.add_subparsers(dest="acao", required=True)
+    o = rvs.add_parser("obter", help="tenta reservar a rodada para esta máquina e diz quem a tem")
+    o.add_argument("--produtora", required=True)
+    o.add_argument("--competencia", required=True, help="AAAA-MM")
 
     ex = sub.add_parser("extracao", help="registro da extração do Esferas (usado pelo Claude)")
     acoes = ex.add_subparsers(dest="acao", required=True)
@@ -89,9 +98,13 @@ def _json(dados) -> None:
     print(json.dumps(dados, ensure_ascii=True))
 
 
-def executar(a, env=None, consulta_banco=None) -> int:
+def executar(a, env=None, consulta_banco=None, reservar_banco=None) -> int:
     try:
-        return _agenda(a, env, consulta_banco) if a.cmd == "agenda" else _extracao(a, env)
+        if a.cmd == "agenda":
+            return _agenda(a, env, consulta_banco, reservar_banco)
+        if a.cmd == "reserva":
+            return _reserva(a, reservar_banco)
+        return _extracao(a, env)
     except SemMensagemNova as e:
         print(f"AGUARDE: {e}", file=sys.stderr)
         return EXIT_AGUARDAR
@@ -104,7 +117,7 @@ def executar(a, env=None, consulta_banco=None) -> int:
         return EXIT_FALHA
 
 
-def _agenda(a, env, consulta_banco=None) -> int:
+def _agenda(a, env, consulta_banco=None, reservar_banco=None) -> int:
     if not produtoras.existe(a.produtora):
         raise ExtracaoErro(f"produtora desconhecida: {a.produtora!r}")
     hoje = _hoje(a.hoje)
@@ -121,9 +134,24 @@ def _agenda(a, env, consulta_banco=None) -> int:
         banco, ja_no_banco = consulta_banco(a.produtora, competencia, fim.isoformat(), a.restaurar_banco)
         if ja_no_banco:
             rodar, motivo = False, "competência já importada (banco central)"
-    _json({"rodar": rodar, "competencia": competencia, "motivo": motivo, "banco": banco,
+    reserva = "nao_pedida"
+    if rodar and a.reservar:
+        reserva = "nao_consultada"
+        if banco == "consultado" and reservar_banco is not None:
+            reserva = reservar_banco(a.produtora, competencia)["estado"]
+            if reserva == "de_outra_maquina":
+                rodar, motivo = False, "rodada em andamento em outra máquina"
+    _json({"rodar": rodar, "competencia": competencia, "motivo": motivo, "banco": banco, "reserva": reserva,
            "pasta_apuracao": str(apuracao),
            "pasta_extracoes": str(caminhos.pasta_extracoes(raiz, competencia, a.produtora, nome=n_ext))})
+    return EXIT_OK
+
+
+def _reserva(a, reservar_banco) -> int:
+    if not produtoras.existe(a.produtora):
+        raise ExtracaoErro(f"produtora desconhecida: {a.produtora!r}")
+    competencia, _, _ = calendario.periodo_da_competencia(a.competencia)   # ValueError -> ERRO (código 3)
+    _json({"produtora": a.produtora, "competencia": competencia, **reservar_banco(a.produtora, competencia)})
     return EXIT_OK
 
 
